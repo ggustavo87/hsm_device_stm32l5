@@ -28,6 +28,10 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "mbedtls_config.h"
+#include "mbedtls/platform.h"
+#include "mbedtls/ctr_drbg.h"
+#include "mbedtls/entropy.h"
+#include "mbedtls/aes.h"
 /* USER CODE BEGIN 0 */
 
 /* USER CODE END 0 */

@@ -21,24 +21,13 @@
 #include "mbedtls.h"
 
 /* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
-
-/* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
-
-/* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-
-/* USER CODE END PD */
+#define KEY_SIZE 32 // 256-bit key size for AES-256
 
 /* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
@@ -119,9 +108,87 @@ int main(void)
   MX_MBEDTLS_Init();
   MX_RNG_Init();
   MX_PKA_Init();
-  /* USER CODE BEGIN 2 */
 
-  /* USER CODE END 2 */
+
+  /* Testing AES */
+  int ret;
+  unsigned char key[KEY_SIZE]; // AES key
+  /*unsigned char key[KEY_SIZE] = {
+      0x1a, 0x2b, 0x3c, 0x4d, 0x5e, 0x6f, 0x70, 0x81,
+      0x92, 0xa3, 0xb4, 0xc5, 0xd6, 0xe7, 0xf8, 0x09,
+      0x1a, 0x2b, 0x3c, 0x4d, 0x5e, 0x6f, 0x70, 0x81,
+      0x92, 0xa3, 0xb4, 0xc5, 0xd6, 0xe7, 0xf8, 0x09
+  };*/
+  unsigned char iv[16] = {0}; // Initialization vector (IV) for AES-CBC mode
+  unsigned char iv1[16] = {0}; // Initialization vector (IV) for AES-CBC mode
+  const char *plain_text = "This is a test text"; // Plain text to encrypt
+  unsigned char encrypted_text[256] = {0}; // Buffer to store encrypted text
+  unsigned char decrypted_text[256] = {0}; // Buffer to store decrypted text
+  size_t plain_text_len = strlen(plain_text);
+
+  mbedtls_aes_context aes_ctx;
+  mbedtls_aes_init(&aes_ctx);
+
+
+  mbedtls_ctr_drbg_context ctr_drbg_ctx;
+  mbedtls_entropy_context entropy_ctx;
+  mbedtls_ctr_drbg_init(&ctr_drbg_ctx);
+  mbedtls_entropy_init(&entropy_ctx);
+
+  // Generate context and entropy source
+  ret = mbedtls_ctr_drbg_seed(&ctr_drbg_ctx, mbedtls_entropy_func, &entropy_ctx, NULL, 0);
+  if (ret != 0) {
+      printf("Failed to initialize random generator\n");
+      return 1;
+  }
+
+  // Generate AES key
+  ret = mbedtls_ctr_drbg_random(&ctr_drbg_ctx, key, KEY_SIZE);
+  if (ret != 0) {
+      printf("Failed to generate random key\n");
+      return 1;
+  }
+
+
+  // Check if plaintext length is a multiple of AES block size
+  size_t block_size = 16; // AES block size in bytes
+  size_t padding_len = block_size - (plain_text_len % block_size);
+
+  // Allocate space for padded plaintext
+  size_t padded_text_len = plain_text_len + padding_len;
+  unsigned char padded_text[padded_text_len];
+  memcpy(padded_text, plain_text, plain_text_len);
+
+  // Pad plaintext if necessary
+  if (padding_len != 0) {
+      for (size_t i = 0; i < padding_len; i++) {
+          padded_text[plain_text_len + i] = (unsigned char) padding_len;
+      }
+  }
+
+  // Encrypt the plain text
+  mbedtls_aes_setkey_enc(&aes_ctx, key, KEY_SIZE * 8); // 256-bit key
+  ret = mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_ENCRYPT, padded_text_len, iv, (const unsigned char *)padded_text, encrypted_text);
+  if (ret != 0) {
+      printf("Encryption failed\n");
+      return 1;
+  }
+
+  // Decrypt the encrypted text
+  mbedtls_aes_setkey_dec(&aes_ctx, key, KEY_SIZE * 8); // 256-bit key
+  ret = mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_DECRYPT, padded_text_len, iv1, encrypted_text, decrypted_text);
+  if (ret != 0) {
+      printf("Decryption failed\n");
+      return 1;
+  }
+
+
+  mbedtls_aes_free(&aes_ctx);
+  mbedtls_ctr_drbg_free(&ctr_drbg_ctx);
+  mbedtls_entropy_free(&entropy_ctx);
+
+  /*  Testing RSA   */
+
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
