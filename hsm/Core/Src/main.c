@@ -75,6 +75,12 @@ static void MX_PKA_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+void mbedtls_error_handler(int ret) {
+    char error_buf[100];
+    mbedtls_strerror(ret, error_buf, 100);
+    printf("Error: %s\n", error_buf);
+}
+
 /* USER CODE END 0 */
 
 /**
