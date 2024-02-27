@@ -51,7 +51,17 @@ UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 OTFDEC_RegionConfigTypeDef Config = {0};
-uint32_t Key[4]={0xA9876543, 0x210FEDCB, 0xA9876543, 0x210FEDCB};
+uint32_t otfdec_key[4]={0xA9876543, 0x210FEDCB, 0xA9876543, 0x210FEDCB};
+
+unsigned char session_key[KEY_SIZE]= {0};
+
+unsigned char test_key[KEY_SIZE] = {
+    0x1a, 0x2b, 0x3c, 0x4d, 0x5e, 0x6f, 0x70, 0x81,
+    0x92, 0xa3, 0xb4, 0xc5, 0xd6, 0xe7, 0xf8, 0x09,
+    0x1a, 0x2b, 0x3c, 0x4d, 0x5e, 0x6f, 0x70, 0x81,
+    0x92, 0xa3, 0xb4, 0xc5, 0xd6, 0xe7, 0xf8, 0x09
+};
+
 /* Ciphered instructions */
 uint8_t input;
 /* USER CODE END PV */
@@ -102,7 +112,7 @@ void APP_ActivateOTFDEC(void) {
 	  }
 
 	  /* Set OTFDEC Key */
-	  if (HAL_OTFDEC_RegionSetKey(&hotfdec1, OTFDEC_REGION2, Key) != HAL_OK)
+	  if (HAL_OTFDEC_RegionSetKey(&hotfdec1, OTFDEC_REGION2, otfdec_key) != HAL_OK)
 	  {
 	    Error_Handler();
 	   }
@@ -187,13 +197,6 @@ int main(void)
 
   /* Testing AES */
   int ret;
-  unsigned char key[KEY_SIZE]; // AES key
-  /*unsigned char key[KEY_SIZE] = {
-      0x1a, 0x2b, 0x3c, 0x4d, 0x5e, 0x6f, 0x70, 0x81,
-      0x92, 0xa3, 0xb4, 0xc5, 0xd6, 0xe7, 0xf8, 0x09,
-      0x1a, 0x2b, 0x3c, 0x4d, 0x5e, 0x6f, 0x70, 0x81,
-      0x92, 0xa3, 0xb4, 0xc5, 0xd6, 0xe7, 0xf8, 0x09
-  };*/
   unsigned char iv[16] = {0}; // Initialization vector (IV) for AES-CBC mode
   unsigned char iv1[16] = {0};
   const char *plain_text = "This is a test text";
@@ -217,7 +220,7 @@ int main(void)
   }
 
   // Generate AES key
-  ret = mbedtls_ctr_drbg_random(&ctr_drbg_ctx, key, KEY_SIZE);
+  ret = mbedtls_ctr_drbg_random(&ctr_drbg_ctx, session_key, KEY_SIZE);
   if (ret != 0) {
       printf("Failed to generate random key\n");
       return 1;
@@ -241,7 +244,7 @@ int main(void)
   }
 
   // Encrypt the plain text
-  mbedtls_aes_setkey_enc(&aes_ctx, key, KEY_SIZE * 8); // 256-bit key
+  mbedtls_aes_setkey_enc(&aes_ctx, session_key, KEY_SIZE * 8); // 256-bit key
   ret = mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_ENCRYPT, padded_text_len, iv, (const unsigned char *)padded_text, encrypted_text);
   if (ret != 0) {
       printf("Encryption failed\n");
@@ -249,7 +252,7 @@ int main(void)
   }
 
   // Decrypt the encrypted text
-  mbedtls_aes_setkey_dec(&aes_ctx, key, KEY_SIZE * 8); // 256-bit key
+  mbedtls_aes_setkey_dec(&aes_ctx, session_key, KEY_SIZE * 8); // 256-bit key
   ret = mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_DECRYPT, padded_text_len, iv1, encrypted_text, decrypted_text);
   if (ret != 0) {
       printf("Decryption failed\n");
@@ -832,7 +835,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void APP_PrintMainMenu(void)
 {
-	  printf("\r\n=================== ERNI Menu =============================\r\n\n");
+	  printf("\r\n=================== HSM Commands ===========================\r\n\n");
 	  printf("  Dump Memory content at 0x%08.8X ----------------------1\r\n\n",START_ADRESS_OTFDEC1_REGION2);
 	  printf("  Enable OTFDEC ----------------------------------------- 2\r\n\n");
 	  printf("  Launch binary at  0x%08.8X -------------------------- 3\r\n\n",START_ADRESS_OTFDEC1_REGION2);
