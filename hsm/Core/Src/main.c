@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "crypto_manager.h"
 #include "hal_octospi_utility.h"
 #include "mbedtls.h"
 
@@ -185,87 +186,25 @@ int main(void)
   MX_MBEDTLS_Init();
   MX_RNG_Init();
   MX_PKA_Init();
-
-  /* Init OSPI external memory */
   OSPI_Config() ;
   OSPI_MemoryMap();
+
+  /* End of MCU Configuration--------------------------------------------------*/
+
+  int ret;
+  unsigned char iv[16] = {0}; // IV for AES-CBC is 16
+  unsigned char iv1[16] = {0};
+  const char *plain_text = "This is a test text";
+  unsigned char encrypted_text[256] = {0};
+  unsigned char decrypted_text[256] = {0};
+  size_t ciphertext_len =0;
+  size_t plain_text_len = strlen(plain_text);
+
 
   printf("\r\n***********************************************************\r\n");
   printf("\r\n*             ERNI Hardware Secure Module                 *\r\n");
   printf("\r\n***********************************************************\r\n");
   APP_PrintMainMenu();
-
-  /* Testing AES */
-  int ret;
-  unsigned char iv[16] = {0}; // Initialization vector (IV) for AES-CBC mode
-  unsigned char iv1[16] = {0};
-  const char *plain_text = "This is a test text";
-  unsigned char encrypted_text[256] = {0};
-  unsigned char decrypted_text[256] = {0};
-  size_t plain_text_len = strlen(plain_text);
-
-  mbedtls_aes_context aes_ctx;
-  mbedtls_aes_init(&aes_ctx);
-
-  mbedtls_ctr_drbg_context ctr_drbg_ctx;
-  mbedtls_entropy_context entropy_ctx;
-  mbedtls_ctr_drbg_init(&ctr_drbg_ctx);
-  mbedtls_entropy_init(&entropy_ctx);
-
-  // Generate context and entropy source
-  ret = mbedtls_ctr_drbg_seed(&ctr_drbg_ctx, mbedtls_entropy_func, &entropy_ctx, NULL, 0);
-  if (ret != 0) {
-      printf("Failed to initialize random generator\n");
-      return 1;
-  }
-
-  // Generate AES key
-  ret = mbedtls_ctr_drbg_random(&ctr_drbg_ctx, session_key, KEY_SIZE);
-  if (ret != 0) {
-      printf("Failed to generate random key\n");
-      return 1;
-  }
-
-
-  // Check if plaintext length is a multiple of AES block size
-  size_t block_size = 16; // AES block size in bytes
-  size_t padding_len = block_size - (plain_text_len % block_size);
-
-  // Allocate space for padded plaintext
-  size_t padded_text_len = plain_text_len + padding_len;
-  unsigned char padded_text[padded_text_len];
-  memcpy(padded_text, plain_text, plain_text_len);
-
-  // Pad plaintext if necessary
-  if (padding_len != 0) {
-      for (size_t i = 0; i < padding_len; i++) {
-          padded_text[plain_text_len + i] = (unsigned char) padding_len;
-      }
-  }
-
-  // Encrypt the plain text
-  mbedtls_aes_setkey_enc(&aes_ctx, session_key, KEY_SIZE * 8); // 256-bit key
-  ret = mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_ENCRYPT, padded_text_len, iv, (const unsigned char *)padded_text, encrypted_text);
-  if (ret != 0) {
-      printf("Encryption failed\n");
-      return 1;
-  }
-
-  // Decrypt the encrypted text
-  mbedtls_aes_setkey_dec(&aes_ctx, session_key, KEY_SIZE * 8); // 256-bit key
-  ret = mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_DECRYPT, padded_text_len, iv1, encrypted_text, decrypted_text);
-  if (ret != 0) {
-      printf("Decryption failed\n");
-      return 1;
-  }
-
-
-  mbedtls_aes_free(&aes_ctx);
-  mbedtls_ctr_drbg_free(&ctr_drbg_ctx);
-  mbedtls_entropy_free(&entropy_ctx);
-
-  /*  Testing RSA   */
-
 
   /* Infinite loop */
   while (1)
@@ -284,13 +223,30 @@ int main(void)
 			  APP_LaunchAppli();
 			  break;
 		  case '4' :
-			  APP_LaunchAppli();
+			  if (aes_generate_key(session_key, AES_KEY_SIZE)) {
+				  printf("Failed to generate random key\n");
+				  return 1;
+			  }
+
+			  for (size_t i = 0; i < AES_KEY_SIZE; i++) {
+				printf("%02X", session_key[i]);
+			  }
+			  printf("\n");
+
 			  break;
 		  case '5' :
-			  APP_LaunchAppli();
+			  if (aes_encrypt(plain_text, plain_text_len, session_key, iv, encrypted_text, &ciphertext_len)) {
+				  printf("Encryption failed\n");
+				  return 1;
+			  }
+
+
+			  if (aes_decrypt(encrypted_text, ciphertext_len, session_key, iv1, decrypted_text)) {
+			      printf("Decryption failed\n");
+			      return 1;
+			  }
 			  break;
 		  }
-		  APP_PrintMainMenu();
       }
 
   }
