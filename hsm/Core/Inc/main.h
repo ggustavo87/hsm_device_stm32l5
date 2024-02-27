@@ -30,9 +30,10 @@ extern "C" {
 #include "stm32l5xx_hal.h"
 
 /* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
-
-/* USER CODE END Includes */
+#if defined(__GNUC__)
+#include <stdio.h>
+#include <stdlib.h>
+#endif
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */

@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "hal_octospi_utility.h"
 #include "mbedtls.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -26,6 +27,11 @@
 
 /* Private define ------------------------------------------------------------*/
 #define KEY_SIZE 32 // 256-bit key size for AES-256
+
+#define START_ADRESS_OCTOSPI1            0x90000000
+#define START_ADRESS_OTFDEC1_REGION2     0x90000000
+#define END_ADRESS_OTFDEC1_REGION2       0x90007FFF
+#define DUMP_SIZE  8
 
 /* Private macro -------------------------------------------------------------*/
 
@@ -44,7 +50,10 @@ RTC_HandleTypeDef hrtc;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-
+OTFDEC_RegionConfigTypeDef Config = {0};
+uint32_t Key[4]={0xA9876543, 0x210FEDCB, 0xA9876543, 0x210FEDCB};
+/* Ciphered instructions */
+uint8_t input;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -62,7 +71,6 @@ static void MX_PKA_Init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
 
 void mbedtls_error_handler(int ret) {
     char error_buf[100];
@@ -70,7 +78,79 @@ void mbedtls_error_handler(int ret) {
     printf("Error: %s\n", error_buf);
 }
 
-/* USER CODE END 0 */
+
+void APP_PrintMainMenu(void);
+void APP_DumpMemory(void);
+void APP_DumpMemory(void) {
+
+	uint32_t *ptr = (uint32_t *)START_ADRESS_OTFDEC1_REGION2;
+    printf("\r\nMemory Dump\r\n");
+	for (uint8_t i=0; i<DUMP_SIZE;i++)
+	{
+	  printf("0x%08.8X :  %08.8X %08.8X %08.8X %08.8X\r\n",ptr ,*ptr, *(ptr+1),*(ptr+2) ,*(ptr+3) );
+	  ptr=ptr+4;
+	}
+}
+void APP_ActivateOTFDEC(void);
+void APP_ActivateOTFDEC(void) {
+	  __HAL_OTFDEC_ENABLE_IT(&hotfdec1, OTFDEC_ALL_INT);
+
+	  /* Set OTFDEC Mode */
+	  if (HAL_OTFDEC_RegionSetMode(&hotfdec1, OTFDEC_REGION2, OTFDEC_REG_MODE_INSTRUCTION_OR_DATA_ACCESSES) != HAL_OK)
+	  {
+	    Error_Handler();
+	  }
+
+	  /* Set OTFDEC Key */
+	  if (HAL_OTFDEC_RegionSetKey(&hotfdec1, OTFDEC_REGION2, Key) != HAL_OK)
+	  {
+	    Error_Handler();
+	   }
+
+
+	  /* Configure then activate OTFDEC decryption */
+	  Config.Nonce[0]     = 0x11111111;
+	  Config.Nonce[1]     = 0x55555555;
+	  Config.StartAddress = START_ADRESS_OTFDEC1_REGION2;
+	  Config.EndAddress   = END_ADRESS_OTFDEC1_REGION2;
+	  Config.Version      = 0xA5A5;
+	  if (HAL_OTFDEC_RegionConfig(&hotfdec1, OTFDEC_REGION2, &Config, OTFDEC_REG_CONFIGR_LOCK_ENABLE) != HAL_OK)
+	  {
+	    Error_Handler();
+	  }
+
+  	  printf("   !!! OTFDEC has been activated on region : 0x%08.8X 0x%08.8X\r\n\n",START_ADRESS_OTFDEC1_REGION2,END_ADRESS_OTFDEC1_REGION2);
+
+}
+void APP_LaunchAppli(void);
+void APP_LaunchAppli(void)
+{
+    typedef  void (*pFunction)(void);
+
+    pFunction JumpToApplication;
+    uint32_t JumpAddress;
+
+    JumpAddress = *(__IO uint32_t*) (START_ADRESS_OTFDEC1_REGION2 + 4);
+    if (( JumpAddress >= START_ADRESS_OTFDEC1_REGION2 ) && (JumpAddress < END_ADRESS_OTFDEC1_REGION2 ))
+		{
+			JumpToApplication = (pFunction) JumpAddress;
+			JumpToApplication();
+		}
+    else
+    {
+  	  printf("   !!! Error no application at 0x%08.8X  !!!\r\n\n",START_ADRESS_OTFDEC1_REGION2);
+
+    }
+}
+
+int __io_putchar(int ch)
+{
+  /* Place your implementation of fputc here */
+  /* e.g. write a character to the USART1 and Loop until the end of transmission */
+  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
+
+  return ch;
+}
 
 /**
   * @brief  The application entry point.
@@ -78,25 +158,12 @@ void mbedtls_error_handler(int ret) {
   */
 int main(void)
 {
-  /* USER CODE BEGIN 1 */
-
-  /* USER CODE END 1 */
-
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
-
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
   /* Configure the system clock */
   SystemClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
@@ -109,6 +176,14 @@ int main(void)
   MX_RNG_Init();
   MX_PKA_Init();
 
+  /* Init OSPI external memory */
+  OSPI_Config() ;
+  OSPI_MemoryMap();
+
+  printf("\r\n***********************************************************\r\n");
+  printf("\r\n*             ERNI Hardware Secure Module                 *\r\n");
+  printf("\r\n***********************************************************\r\n");
+  APP_PrintMainMenu();
 
   /* Testing AES */
   int ret;
@@ -120,15 +195,14 @@ int main(void)
       0x92, 0xa3, 0xb4, 0xc5, 0xd6, 0xe7, 0xf8, 0x09
   };*/
   unsigned char iv[16] = {0}; // Initialization vector (IV) for AES-CBC mode
-  unsigned char iv1[16] = {0}; // Initialization vector (IV) for AES-CBC mode
-  const char *plain_text = "This is a test text"; // Plain text to encrypt
-  unsigned char encrypted_text[256] = {0}; // Buffer to store encrypted text
-  unsigned char decrypted_text[256] = {0}; // Buffer to store decrypted text
+  unsigned char iv1[16] = {0};
+  const char *plain_text = "This is a test text";
+  unsigned char encrypted_text[256] = {0};
+  unsigned char decrypted_text[256] = {0};
   size_t plain_text_len = strlen(plain_text);
 
   mbedtls_aes_context aes_ctx;
   mbedtls_aes_init(&aes_ctx);
-
 
   mbedtls_ctr_drbg_context ctr_drbg_ctx;
   mbedtls_entropy_context entropy_ctx;
@@ -191,14 +265,32 @@ int main(void)
 
 
   /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
+	  __HAL_UART_FLUSH_DRREGISTER(&huart1);
+	  if ( HAL_OK== HAL_UART_Receive(&huart1, (uint8_t *)&input, 1, 2000))
+      {
+		  switch (input) {
+		  case '1' :
+			  APP_DumpMemory();
+			  break;
+		  case '2' :
+			  APP_ActivateOTFDEC();
+			  break;
+		  case '3' :
+			  APP_LaunchAppli();
+			  break;
+		  case '4' :
+			  APP_LaunchAppli();
+			  break;
+		  case '5' :
+			  APP_LaunchAppli();
+			  break;
+		  }
+		  APP_PrintMainMenu();
+      }
 
-    /* USER CODE BEGIN 3 */
   }
-  /* USER CODE END 3 */
 }
 
 /**
@@ -302,19 +394,19 @@ static void MX_OCTOSPI1_Init(void)
   /* USER CODE END OCTOSPI1_Init 1 */
   /* OCTOSPI1 parameter configuration*/
   hospi1.Instance = OCTOSPI1;
-  hospi1.Init.FifoThreshold = 1;
+  hospi1.Init.FifoThreshold = 4;
   hospi1.Init.DualQuad = HAL_OSPI_DUALQUAD_DISABLE;
-  hospi1.Init.MemoryType = HAL_OSPI_MEMTYPE_MICRON;
-  hospi1.Init.DeviceSize = 32;
-  hospi1.Init.ChipSelectHighTime = 1;
+  hospi1.Init.MemoryType = HAL_OSPI_MEMTYPE_MACRONIX;
+  hospi1.Init.DeviceSize = 26;
+  hospi1.Init.ChipSelectHighTime = 2;
   hospi1.Init.FreeRunningClock = HAL_OSPI_FREERUNCLK_DISABLE;
   hospi1.Init.ClockMode = HAL_OSPI_CLOCK_MODE_0;
   hospi1.Init.WrapSize = HAL_OSPI_WRAP_NOT_SUPPORTED;
-  hospi1.Init.ClockPrescaler = 1;
+  hospi1.Init.ClockPrescaler = 2;
   hospi1.Init.SampleShifting = HAL_OSPI_SAMPLE_SHIFTING_NONE;
-  hospi1.Init.DelayHoldQuarterCycle = HAL_OSPI_DHQC_DISABLE;
+  hospi1.Init.DelayHoldQuarterCycle = HAL_OSPI_DHQC_ENABLE;
   hospi1.Init.ChipSelectBoundary = 0;
-  hospi1.Init.DelayBlockBypass = HAL_OSPI_DELAY_BLOCK_BYPASSED;
+  hospi1.Init.DelayBlockBypass = HAL_OSPI_DELAY_BLOCK_USED;
   hospi1.Init.Refresh = 0;
   if (HAL_OSPI_Init(&hospi1) != HAL_OK)
   {
@@ -325,7 +417,6 @@ static void MX_OCTOSPI1_Init(void)
   /* USER CODE END OCTOSPI1_Init 2 */
 
 }
-
 /**
   * @brief OTFDEC1 Initialization Function
   * @param None
@@ -739,7 +830,16 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void APP_PrintMainMenu(void)
+{
+	  printf("\r\n=================== ERNI Menu =============================\r\n\n");
+	  printf("  Dump Memory content at 0x%08.8X ----------------------1\r\n\n",START_ADRESS_OTFDEC1_REGION2);
+	  printf("  Enable OTFDEC ----------------------------------------- 2\r\n\n");
+	  printf("  Launch binary at  0x%08.8X -------------------------- 3\r\n\n",START_ADRESS_OTFDEC1_REGION2);
+	  printf("  Generate session key using AES-CBC--------------------- 4\r\n\n");
+	  printf("  Encrypt message using session key --------------------- 5\r\n\n");
+	  printf("  Selection :\r\n\n");
+}
 /* USER CODE END 4 */
 
 /**
@@ -758,7 +858,7 @@ void Error_Handler(void)
 }
 
 #ifdef  USE_FULL_ASSERT
-/**
+/** statu
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.
   * @param  file: pointer to the source file name
