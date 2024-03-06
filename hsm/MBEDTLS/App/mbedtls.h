@@ -32,6 +32,8 @@
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/entropy.h"
 #include "mbedtls/aes.h"
+#include "mbedtls/ecdsa.h"
+#include "mbedtls/pk.h"
 /* USER CODE BEGIN 0 */
 
 /* USER CODE END 0 */

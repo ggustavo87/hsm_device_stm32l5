@@ -1,4 +1,3 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : main.c
@@ -15,7 +14,6 @@
   *
   ******************************************************************************
   */
-/* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "crypto_manager.h"
@@ -25,6 +23,17 @@
 /* Private includes ----------------------------------------------------------*/
 
 /* Private typedef -----------------------------------------------------------*/
+/* Define enum for menu options */
+typedef enum {
+    DUMP_MEMORY = '1',
+    ENABLE_OTFDEC = '2',
+    LAUNCH_APPLI = '3',
+    GENERATE_AES_KEY = '4',
+    AES_ENCRYPT = '5',
+    AES_DECRYPT = '6',
+    GENERATE_ECDSA_KEYS = '7'
+} MenuOption;
+
 
 /* Private define ------------------------------------------------------------*/
 #define KEY_SIZE 32 // 256-bit key size for AES-256
@@ -77,11 +86,13 @@ static void MX_OTFDEC1_Init(void);
 static void MX_RTC_Init(void);
 static void MX_RNG_Init(void);
 static void MX_PKA_Init(void);
-/* USER CODE BEGIN PFP */
-
-/* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
+
+void APP_PrintMainMenu(void);
+void APP_DumpMemory(void);
+void APP_ActivateOTFDEC(void);
+void APP_LaunchAppli(void);
 
 void mbedtls_error_handler(int ret) {
     char error_buf[100];
@@ -89,9 +100,6 @@ void mbedtls_error_handler(int ret) {
     printf("Error: %s\n", error_buf);
 }
 
-
-void APP_PrintMainMenu(void);
-void APP_DumpMemory(void);
 void APP_DumpMemory(void) {
 
 	uint32_t *ptr = (uint32_t *)START_ADRESS_OTFDEC1_REGION2;
@@ -102,7 +110,7 @@ void APP_DumpMemory(void) {
 	  ptr=ptr+4;
 	}
 }
-void APP_ActivateOTFDEC(void);
+
 void APP_ActivateOTFDEC(void) {
 	  __HAL_OTFDEC_ENABLE_IT(&hotfdec1, OTFDEC_ALL_INT);
 
@@ -133,7 +141,7 @@ void APP_ActivateOTFDEC(void) {
   	  printf("   !!! OTFDEC has been activated on region : 0x%08.8X 0x%08.8X\r\n\n",START_ADRESS_OTFDEC1_REGION2,END_ADRESS_OTFDEC1_REGION2);
 
 }
-void APP_LaunchAppli(void);
+
 void APP_LaunchAppli(void)
 {
     typedef  void (*pFunction)(void);
@@ -200,6 +208,8 @@ int main(void)
   size_t ciphertext_len =0;
   size_t plain_text_len = strlen(plain_text);
 
+  crypto_manager_init();
+
 
   printf("\r\n***********************************************************\r\n");
   printf("\r\n*             ERNI Hardware Secure Module                 *\r\n");
@@ -213,39 +223,74 @@ int main(void)
 	  if ( HAL_OK== HAL_UART_Receive(&huart1, (uint8_t *)&input, 1, 2000))
       {
 		  switch (input) {
-		  case '1' :
+		  case DUMP_MEMORY:
 			  APP_DumpMemory();
 			  break;
-		  case '2' :
+		  case ENABLE_OTFDEC:
 			  APP_ActivateOTFDEC();
 			  break;
-		  case '3' :
+		  case LAUNCH_APPLI:
 			  APP_LaunchAppli();
 			  break;
-		  case '4' :
+		  case GENERATE_AES_KEY:
 			  if (aes_generate_key(session_key, AES_KEY_SIZE)) {
 				  printf("Failed to generate random key\n");
 				  return 1;
 			  }
 
+			  printf("AES Key: ");
 			  for (size_t i = 0; i < AES_KEY_SIZE; i++) {
+				//Print in HEX
 				printf("%02X", session_key[i]);
 			  }
 			  printf("\n");
 
 			  break;
-		  case '5' :
-			  if (aes_encrypt(plain_text, plain_text_len, session_key, iv, encrypted_text, &ciphertext_len)) {
+		  case AES_ENCRYPT:
+			  uint8_t buffer[256] = ""; // Max lenght 256 bytes
+			  size_t message_len = 0;
+
+			  // Read the rest of the message
+			  while (message_len < sizeof(buffer) - 1) // -1 for null termination
+			  {
+				  if (HAL_OK == HAL_UART_Receive(&huart1, &buffer[message_len], 1, 2000))
+				  {
+					  if (buffer[message_len] == '\n' || buffer[message_len] == '\r')
+					  {
+						  // End of message reached
+						  break;
+					  }
+					  message_len++;
+				  }
+			  }
+
+			  buffer[message_len] = '\0';
+
+			  if (aes_encrypt(buffer, message_len, session_key, iv, encrypted_text, &ciphertext_len)) {
 				  printf("Encryption failed\n");
 				  return 1;
 			  }
 
+			  print_base64_encoded_message(encrypted_text, ciphertext_len);
 
-			  if (aes_decrypt(encrypted_text, ciphertext_len, session_key, iv1, decrypted_text)) {
+			  /*if (aes_decrypt(encrypted_text, ciphertext_len, session_key, iv1, decrypted_text)) {
 			      printf("Decryption failed\n");
 			      return 1;
 			  }
+			  printf("Decripted message: %s\n", decrypted_text);*/
 			  break;
+
+		  case AES_DECRYPT:
+		      // Decrypt the encrypted message
+		      if (aes_decrypt(encrypted_text, ciphertext_len, session_key, iv1, decrypted_text)) {
+		          printf("Decryption failed\n");
+		          return 1;
+		      }
+		      printf("Decrypted Message: %s\n", decrypted_text);
+		      break;
+
+		  case GENERATE_ECDSA_KEYS:
+		      break;
 		  }
       }
 
@@ -435,24 +480,12 @@ static void MX_PKA_Init(void)
   */
 static void MX_RNG_Init(void)
 {
-
-  /* USER CODE BEGIN RNG_Init 0 */
-
-  /* USER CODE END RNG_Init 0 */
-
-  /* USER CODE BEGIN RNG_Init 1 */
-
-  /* USER CODE END RNG_Init 1 */
   hrng.Instance = RNG;
   hrng.Init.ClockErrorDetection = RNG_CED_ENABLE;
   if (HAL_RNG_Init(&hrng) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN RNG_Init 2 */
-
-  /* USER CODE END RNG_Init 2 */
-
 }
 
 /**
@@ -509,14 +542,6 @@ static void MX_RTC_Init(void)
   */
 static void MX_USART1_UART_Init(void)
 {
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
   huart1.Init.BaudRate = 115200;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
@@ -528,6 +553,7 @@ static void MX_USART1_UART_Init(void)
   huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
   huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
   huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+
   if (HAL_UART_Init(&huart1) != HAL_OK)
   {
     Error_Handler();
@@ -544,10 +570,6 @@ static void MX_USART1_UART_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
-
 }
 
 /**
@@ -792,11 +814,13 @@ static void MX_GPIO_Init(void)
 void APP_PrintMainMenu(void)
 {
 	  printf("\r\n=================== HSM Commands ===========================\r\n\n");
-	  printf("  Dump Memory content at 0x%08.8X ----------------------1\r\n\n",START_ADRESS_OTFDEC1_REGION2);
+	  printf("  Dump data from external Memory (0x%08.8X) ------------1\r\n\n",START_ADRESS_OTFDEC1_REGION2);
 	  printf("  Enable OTFDEC ----------------------------------------- 2\r\n\n");
 	  printf("  Launch binary at  0x%08.8X -------------------------- 3\r\n\n",START_ADRESS_OTFDEC1_REGION2);
 	  printf("  Generate session key using AES-CBC--------------------- 4\r\n\n");
 	  printf("  Encrypt message using session key --------------------- 5\r\n\n");
+	  printf("  Decrypt message using session key --------------------- 6\r\n\n");
+	  printf("  Generate ECDSA key pair -------------------------------- 7\r\n\n");
 	  printf("  Selection :\r\n\n");
 }
 /* USER CODE END 4 */
@@ -832,3 +856,4 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+

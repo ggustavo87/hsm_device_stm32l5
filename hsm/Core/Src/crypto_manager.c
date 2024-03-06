@@ -1,6 +1,15 @@
 #include "crypto_manager.h"
 #include "mbedtls.h"
 
+#include "mbedtls/entropy.h"
+#include "mbedtls/ctr_drbg.h"
+#include "mbedtls/x509.h"
+#include "mbedtls/x509_crt.h"
+#include "mbedtls/rsa.h"
+#include "mbedtls/pk.h"
+
+#define KEY_SIZE 256 // Key size in bits
+
 
 int aes_generate_key(unsigned char *key, size_t key_size) {
 	int ret=0;
@@ -70,3 +79,30 @@ int aes_decrypt(const unsigned char *ciphertext, size_t ciphertext_len, unsigned
 
 	return ret;
 }
+
+
+#define MAX_ENCODED_MESSAGE_SIZE 512
+void print_base64_encoded_message(uint8_t* msg, size_t msg_len) {
+    // Allocate memory for the encoded message
+    char* base64_encoded_message = (char*)malloc(MAX_ENCODED_MESSAGE_SIZE);
+
+    // Encode the message to Base64 format
+    size_t base64_encoded_len = 0;
+    int ret = mbedtls_base64_encode((unsigned char *)base64_encoded_message, MAX_ENCODED_MESSAGE_SIZE, &base64_encoded_len, msg, msg_len);
+
+    // Check if Base64 encoding was successful
+    if (ret != 0) {
+        printf("Base64 encoding failed\n");
+        return;
+    }
+
+    // Print the Base64 encoded message
+    printf("\nEncrypted Message (Base64): %s\n", base64_encoded_message);
+
+    // Free the allocated memory
+    free(base64_encoded_message);
+}
+
+int crypto_manager_init(void){
+}
+
